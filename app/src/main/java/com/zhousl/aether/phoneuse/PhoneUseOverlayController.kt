@@ -53,6 +53,7 @@ internal class PhoneUseOverlayController(
     private val density = service.resources.displayMetrics.density
     private val easing = PathInterpolator(.22f, .8f, .18f, 1f)
     private var edge: PhoneUseEdgeView? = null
+    private var preparedEdge: PhoneUseEdgeView? = null
     private var capsule: FrameLayout? = null
     private var commentary: PhoneUseCommentaryView? = null
     private var editor: EditText? = null
@@ -92,6 +93,12 @@ internal class PhoneUseOverlayController(
             draft = ""
         }
         state = next
+        if (next != null) {
+            // agent_display starts in Aether before launching another app. Prepare native
+            // shader/blur resources here, outside the edge's first visible animation frame.
+            if (preparedEdge == null) preparedEdge = createEdgeView()
+            entranceBlur.size
+        }
         if (!show || next == null) { hide(); return }
         val appearing = !visible
         if (appearing) {
@@ -99,9 +106,8 @@ internal class PhoneUseOverlayController(
             if (!attach()) return
             visible = true
             edge?.animate()?.cancel()
-            edge?.alpha = 0f
+            edge?.alpha = 1f
             edge?.start()
-            edge?.animate()?.alpha(1f)?.setDuration(motionDuration(220))?.start()
         }
         commentary?.setCommentary(next.commentaryId, next.commentary)
         val hasText = next.commentary.isNotBlank() || isEditing
@@ -131,15 +137,7 @@ internal class PhoneUseOverlayController(
     private fun attach(): Boolean {
         if (edge != null) return true
         updateScreenSize()
-        val edgeView = PhoneUseEdgeView(service).apply {
-            onInsetsChanged = { updateInsets(it) }
-            addOnLayoutChangeListener { _, left, top, right, bottom, _, _, _, _ ->
-                screenWidth = right - left
-                screenHeight = bottom - top
-                updateKeyboardLift(animate = false)
-                positionCapsule()
-            }
-        }
+        val edgeView = preparedEdge ?: createEdgeView().also { preparedEdge = it }
         val host = PhoneUseCapsuleLayout(service).apply {
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
         }
@@ -174,6 +172,16 @@ internal class PhoneUseOverlayController(
         positionCapsule()
         edgeView.requestApplyInsets()
         return true
+    }
+
+    private fun createEdgeView() = PhoneUseEdgeView(service).apply {
+        onInsetsChanged = { updateInsets(it) }
+        addOnLayoutChangeListener { _, left, top, right, bottom, _, _, _, _ ->
+            screenWidth = right - left
+            screenHeight = bottom - top
+            updateKeyboardLift(animate = false)
+            positionCapsule()
+        }
     }
 
     private fun openEditor() {
@@ -453,6 +461,7 @@ internal class PhoneUseOverlayController(
         generation++
         handler.removeCallbacksAndMessages(null)
         detach()
+        preparedEdge = null
     }
 
     private fun detach() {

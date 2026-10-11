@@ -4,6 +4,19 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class PhoneUsePolicyTest {
+    @Test fun menuClickRetriesRevokedAccessInAnAlreadySelectedConversation() {
+        val policy = PhoneUsePermissionRequestPolicy()
+        assertTrue(policy.shouldRequest(true, false, manuallyEnabled = true))
+        // Dismiss, send a normal message, and stop: the explicit menu action must still retry.
+        val selected = phoneUseSelectionAfterMenuClick(selected = true, enabled = true, granted = false)
+        assertTrue(selected)
+        assertTrue(policy.shouldRequest(true, false, manuallyEnabled = selected))
+        assertTrue(phoneUseSelectionAfterMenuClick(selected = false, enabled = true, granted = false))
+        assertFalse(phoneUseSelectionAfterMenuClick(selected = true, enabled = true, granted = true))
+        assertTrue(phoneUseSelectionAfterMenuClick(selected = false, enabled = true, granted = true))
+        assertFalse(phoneUseSelectionAfterMenuClick(selected = false, enabled = false, granted = false))
+    }
+
     @Test fun returnToAetherRequiresAnExplicitForegroundStop() {
         val settings = AppSettings()
         assertFalse(phoneUseReturnToAetherRequested(settings, "stop", org.json.JSONObject()))

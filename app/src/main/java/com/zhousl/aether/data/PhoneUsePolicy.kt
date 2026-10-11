@@ -12,6 +12,10 @@ internal class PhoneUsePermissionRequestPolicy {
     }
 }
 
+/** A menu click retries revoked access even if this conversation already selected Phone Use. */
+internal fun phoneUseSelectionAfterMenuClick(selected: Boolean, enabled: Boolean, granted: Boolean): Boolean =
+    enabled && (!granted || !selected)
+
 internal fun resolvePhoneUseInputStrategy(
     settings: AppSettings,
     action: String,

@@ -16,6 +16,7 @@ import android.view.View
 import android.view.WindowInsets
 import kotlin.math.exp
 import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.sin
 
 /** Hardware-rendered light: a bottom-up bloom contracts into the physical screen edge. */
@@ -28,6 +29,7 @@ internal class PhoneUseEdgeView(context: Context) : View(context) {
     private val shader = if (Build.VERSION.SDK_INT >= 33) RuntimeShader(EDGE_SHADER) else null
     private var radius = 28f * density
     private var born = SystemClock.uptimeMillis()
+    private var awaitingFirstFrame = false
     private var running = false
     private var motion = true
     var onInsetsChanged: ((WindowInsets) -> Unit)? = null
@@ -35,7 +37,8 @@ internal class PhoneUseEdgeView(context: Context) : View(context) {
     init {
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
         isFocusable = false
-        setLayerType(LAYER_TYPE_HARDWARE, null)
+        // The window is already hardware accelerated. A changing full-screen hardware layer
+        // adds an offscreen texture allocation and another full-screen composite every frame.
         setOnApplyWindowInsetsListener { _, insets ->
             if (Build.VERSION.SDK_INT >= 31) {
                 radius = listOf(RoundedCorner.POSITION_TOP_LEFT, RoundedCorner.POSITION_TOP_RIGHT,
@@ -49,6 +52,7 @@ internal class PhoneUseEdgeView(context: Context) : View(context) {
 
     fun start() {
         born = SystemClock.uptimeMillis()
+        awaitingFirstFrame = true
         running = true
         motion = ValueAnimator.areAnimatorsEnabled()
         invalidate()
@@ -66,6 +70,10 @@ internal class PhoneUseEdgeView(context: Context) : View(context) {
     }
 
     override fun onDraw(canvas: Canvas) {
+        if (awaitingFirstFrame) {
+            born = SystemClock.uptimeMillis()
+            awaitingFirstFrame = false
+        }
         val elapsed = if (motion) (SystemClock.uptimeMillis() - born) / 1000f else 3f
         if (Build.VERSION.SDK_INT >= 33 && shader != null && canvas.isHardwareAccelerated) {
             shader.setFloatUniform("size", width.toFloat(), height.toFloat())
@@ -74,7 +82,14 @@ internal class PhoneUseEdgeView(context: Context) : View(context) {
             shader.setFloatUniform("time", elapsed)
             paint.shader = shader
             paint.style = Paint.Style.FILL
-            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+            // The shader is fully transparent beyond 110dp from the physical edge.
+            // Draw four disjoint bands, preserving its coordinates and rounded-corner bloom.
+            val bandX = min(max(110f * density, radius), width / 2f)
+            val bandY = min(max(110f * density, radius), height / 2f)
+            canvas.drawRect(0f, 0f, width.toFloat(), bandY, paint)
+            canvas.drawRect(0f, height - bandY, width.toFloat(), height.toFloat(), paint)
+            canvas.drawRect(0f, bandY, bandX, height - bandY, paint)
+            canvas.drawRect(width - bandX, bandY, width.toFloat(), height - bandY, paint)
         } else {
             // Bounded, allocation-free fallback for Android 8–12. No full-screen software blur.
             matrix.setRotate(elapsed * 12f, width / 2f, height / 2f)

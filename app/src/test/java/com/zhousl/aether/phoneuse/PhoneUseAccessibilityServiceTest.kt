@@ -6,6 +6,12 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import kotlinx.coroutines.async
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlin.coroutines.CoroutineContext
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -24,6 +30,12 @@ import org.robolectric.util.ReflectionHelpers
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [30], application = Application::class)
 class PhoneUseAccessibilityServiceTest {
+    private class QueuedReads : CoroutineDispatcher() {
+        private val tasks = java.util.ArrayDeque<Runnable>()
+        override fun dispatch(context: CoroutineContext, block: Runnable) { tasks.add(block) }
+        fun runCurrent() { while (tasks.isNotEmpty()) tasks.removeFirst().run() }
+    }
+
     private lateinit var service: PhoneUseAccessibilityService
 
     @Before fun setUp() {
@@ -85,6 +97,57 @@ class PhoneUseAccessibilityServiceTest {
         assertFalse(result.has("screenshot_base64"))
         assertFalse(result.has("screenshot_path"))
         assertEquals("display_pixels", result.getString("bounds_coordinate_space"))
+    }
+
+    @Test fun backgroundObservationLeavesTheMainQueueAvailableAndPublishesUsableElements() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val reads = QueuedReads()
+        try {
+            val node = window(0, 10, "Search")
+            shadowOf(node).setOnPerformActionListener { _, _ -> true }
+            val observation = async { service.observeAsync(0, 720, 1280, reads) }
+            runCurrent()
+            assertFalse(observation.isCompleted)
+            val uiFrame = async { true }
+            runCurrent()
+            assertTrue(uiFrame.await())
+            assertFalse(observation.isCompleted)
+            reads.runCurrent()
+            runCurrent()
+            val result = observation.await().getJSONArray("windows").getJSONObject(0).getJSONObject("root")
+            assertEquals("Search", result.getString("text"))
+            service.nodeAction(0, result.getString("node_id"), "tap", "", "forward")
+        } finally { Dispatchers.resetMain() }
+    }
+
+    @Test fun anInterruptedBackgroundObservationCannotRestoreInvalidatedElements() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val reads = QueuedReads()
+        try {
+            window(0, 10, "Search")
+            val observation = async { runCatching { service.observeAsync(0, 720, 1280, reads) } }
+            runCurrent()
+            service.onInterrupt()
+            reads.runCurrent()
+            runCurrent()
+            assertTrue(observation.await().exceptionOrNull() is IllegalStateException)
+            assertTrue(ReflectionHelpers.getField<Map<*, *>>(service, "nodes").isEmpty())
+        } finally { Dispatchers.resetMain() }
+    }
+
+    @Test fun cancellationAfterReadingCannotPublishTheCompletedSnapshot() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val reads = QueuedReads()
+        try {
+            window(0, 10, "Search")
+            val observation = async { service.observeAsync(0, 720, 1280, reads) }
+            runCurrent()
+            reads.runCurrent()
+            observation.cancel()
+            runCurrent()
+            assertTrue(observation.isCancelled)
+            assertTrue(ReflectionHelpers.getField<Map<*, *>>(service, "nodes").isEmpty())
+        } finally { Dispatchers.resetMain() }
     }
 
     @Test fun virtualDisplayObservationNeverIncludesForegroundWindows() {

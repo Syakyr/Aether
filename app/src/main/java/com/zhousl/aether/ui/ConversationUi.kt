@@ -346,6 +346,7 @@ fun ConversationScreen(
     onSetSkillSelected: (String, Boolean) -> Unit,
     onSetMcpServerSelected: (String, Boolean) -> Unit,
     onSetAgentModeSelected: (Boolean) -> Unit,
+    onToggleAgentModeSelected: () -> Unit,
     onSetChromeSelected: (Boolean) -> Unit,
     onCancelEdit: () -> Unit,
     onSend: () -> Unit,
@@ -605,6 +606,7 @@ fun ConversationScreen(
                         ),
                 )
             } else {
+                StreamingRevealHost(conversationKey = conversationStateKey) {
                 LazyColumn(
                     state = listState,
                     modifier = Modifier
@@ -755,6 +757,7 @@ fun ConversationScreen(
                         )
                     }
                 }
+                }
             }
 
             ConversationTopOverlay(
@@ -798,6 +801,7 @@ fun ConversationScreen(
                 onSetSkillSelected = onSetSkillSelected,
                 onSetMcpServerSelected = onSetMcpServerSelected,
                 onSetAgentModeSelected = onSetAgentModeSelected,
+                onToggleAgentModeSelected = onToggleAgentModeSelected,
                 onSetChromeSelected = onSetChromeSelected,
                 onCancelEdit = onCancelEdit,
                 onPickImages = onPickImages,
@@ -2289,6 +2293,7 @@ private fun ConversationComposerOverlay(
     onSetSkillSelected: (String, Boolean) -> Unit,
     onSetMcpServerSelected: (String, Boolean) -> Unit,
     onSetAgentModeSelected: (Boolean) -> Unit,
+    onToggleAgentModeSelected: () -> Unit,
     onSetChromeSelected: (Boolean) -> Unit,
     onCancelEdit: () -> Unit,
     onPickImages: () -> Unit,
@@ -2355,6 +2360,7 @@ private fun ConversationComposerOverlay(
                     onSetSkillSelected = onSetSkillSelected,
                     onSetMcpServerSelected = onSetMcpServerSelected,
                     onSetAgentModeSelected = onSetAgentModeSelected,
+                    onToggleAgentModeSelected = onToggleAgentModeSelected,
                     onSetChromeSelected = onSetChromeSelected,
                     onCancelEdit = onCancelEdit,
                     onPickImages = onPickImages,
@@ -2404,6 +2410,7 @@ private fun ConversationComposerBar(
     onSetSkillSelected: (String, Boolean) -> Unit,
     onSetMcpServerSelected: (String, Boolean) -> Unit,
     onSetAgentModeSelected: (Boolean) -> Unit,
+    onToggleAgentModeSelected: () -> Unit,
     onSetChromeSelected: (Boolean) -> Unit,
     onCancelEdit: () -> Unit,
     onPickImages: () -> Unit,
@@ -2949,7 +2956,7 @@ private fun ConversationComposerBar(
                                             iconContainerColor = AetherSurfaceHigh,
                                             onClick = {
                                                 runAfterAttachmentMenuDismiss {
-                                                    onSetAgentModeSelected(!agentModeSelected)
+                                                    onToggleAgentModeSelected()
                                                 }
                                             },
                                         )

@@ -27,6 +27,7 @@ import java.io.File
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import java.security.MessageDigest
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
@@ -43,6 +44,8 @@ import kotlin.coroutines.resumeWithException
 /** User-enabled service shared by foreground Phone Use and privileged Virtual Display sessions. */
 class PhoneUseAccessibilityService : AccessibilityService() {
     private var overlayController: PhoneUseOverlayController? = null
+    private var destroyed = false
+    private var observationGeneration = 0L
     private val overlayHandler = Handler(Looper.getMainLooper())
     private val overlayUpdateQueued = AtomicBoolean(false)
     private val refreshOverlay = Runnable {
@@ -179,6 +182,7 @@ class PhoneUseAccessibilityService : AccessibilityService() {
     }
 
     override fun onDestroy() {
+        destroyed = true
         clearNodes()
         overlayHandler.removeCallbacksAndMessages(null)
         if (screenReceiverRegistered) { unregisterReceiver(screenReceiver); screenReceiverRegistered = false }
@@ -193,6 +197,7 @@ class PhoneUseAccessibilityService : AccessibilityService() {
 
     @Suppress("DEPRECATION")
     private fun clearNodes() {
+        observationGeneration++
         nodes.values.forEach { it.node.recycle() }
         windowUpdates.clear()
         nodes.clear()
@@ -207,113 +212,164 @@ class PhoneUseAccessibilityService : AccessibilityService() {
             windows
         }
 
-    private fun displayWindows(displayId: Int): List<AccessibilityWindowInfo> =
+    private fun displayWindows(displayId: Int, excludeKeyboard: Boolean = overlayController?.isEditing == true): List<AccessibilityWindowInfo> =
         rawDisplayWindows(displayId).filterNot {
-            isOwnOverlay(it) || (overlayController?.isEditing == true && it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD)
+            isOwnOverlay(it) || (excludeKeyboard && it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD)
         }
 
-    @Suppress("DEPRECATION")
-    fun observe(displayId: Int, width: Int, height: Int): JSONObject {
+    private data class ObservationSnapshot(
+        val json: JSONObject,
+        val nodes: Map<String, ObservedNode>,
+        val windowIds: Set<Int>,
+    )
+
+    private data class ObservationRequest(val updates: Map<Int, Int>, val excludeKeyboard: Boolean, val generation: Long)
+
+    private fun beginObservation(displayId: Int): ObservationRequest {
+        check(!destroyed) { "Accessibility service disconnected." }
         val updates = windowUpdates.toMap()
         clearNodes()
         observedDisplayId = displayId
-        val snapshotId = UUID.randomUUID().toString().take(8)
-        var count = 0
-        var truncated = false
-        fun visit(node: AccessibilityNodeInfo, depth: Int, windowId: Int, windowPackage: String, digest: MessageDigest,
-            parents: List<AncestorAnchor> = emptyList()): JSONObject? {
-            if (count >= 1200 || depth >= 48) { truncated = true; return null }
-            val id = "$snapshotId:${count++}"
-            nodes[id] = ObservedNode(AccessibilityNodeInfo.obtain(node), identity(node, windowPackage),
-                parents.mapNotNull { anchorKey(it, node.isEditable) }.take(2), windowId, windowPackage)
-            val rect = Rect().also(node::getBoundsInScreen)
-            val actions = node.actionList.map { it.id }.toSet()
-            val result = JSONObject().apply {
-                put("class", node.className?.toString().orEmpty())
-                put("view_id", node.viewIdResourceName.orEmpty())
-                put("text", if (node.isPassword) "" else node.text?.toString().orEmpty().take(2000))
-                put("description", if (node.isPassword) "" else node.contentDescription?.toString().orEmpty().take(2000))
-                put("bounds", JSONArray(listOf(rect.left, rect.top, rect.right, rect.bottom)))
-                put("visible", node.isVisibleToUser)
-                put("enabled", node.isEnabled)
-                put("clickable", AccessibilityNodeInfo.ACTION_CLICK in actions)
-                put("long_clickable", AccessibilityNodeInfo.ACTION_LONG_CLICK in actions)
-                put("editable", node.isEditable)
-                put("focused", node.isFocused)
-                put("scrollable", node.isScrollable)
-                put("selected", node.isSelected)
-                put("checkable", node.isCheckable)
-                put("checked", node.isChecked)
-                put("password", node.isPassword)
-                put("actionable", node.isVisibleToUser && node.isEnabled && !rect.isEmpty && actions.isNotEmpty())
+        return ObservationRequest(updates, overlayController?.isEditing == true, observationGeneration)
+    }
+
+    private fun installObservation(snapshot: ObservationSnapshot, generation: Long): JSONObject {
+        check(!destroyed && observationGeneration == generation) { "Accessibility observation invalidated before completion." }
+        nodes.putAll(snapshot.nodes)
+        observedWindowIds = snapshot.windowIds
+        actionInvalidated = false
+        return snapshot.json
+    }
+
+    fun observe(displayId: Int, width: Int, height: Int): JSONObject {
+        val request = beginObservation(displayId)
+        return installObservation(buildObservation(displayId, width, height, request.updates, request.excludeKeyboard), request.generation)
+    }
+
+    /** Binder tree reads and JSON construction must not block the overlay's main-thread frames. */
+    internal suspend fun observeAsync(displayId: Int, width: Int, height: Int,
+        readDispatcher: CoroutineDispatcher = Dispatchers.IO): JSONObject {
+        val request = withContext(Dispatchers.Main.immediate) { beginObservation(displayId) }
+        var snapshot: ObservationSnapshot? = null
+        var installed = false
+        try {
+            withContext(readDispatcher) {
+                snapshot = buildObservation(displayId, width, height, request.updates, request.excludeKeyboard)
             }
-            // The digest excludes ephemeral node_id values, so repeated observations can be compared.
-            digest.update(result.toString().toByteArray(Charsets.UTF_8))
-            digest.update('['.code.toByte())
-            result.put("node_id", id)
-            val children = JSONArray()
-            val childParents = listOf(ancestorAnchor(node)) + parents.take(5)
-            for (index in 0 until node.childCount) {
-                if (count >= 1200) { truncated = true; break }
-                val child = node.getChild(index) ?: continue
-                try { visit(child, depth + 1, windowId, windowPackage, digest, childParents)?.let(children::put) } finally { child.recycle() }
+            return withContext(Dispatchers.Main.immediate) {
+                installObservation(requireNotNull(snapshot), request.generation).also { installed = true }
             }
-            digest.update(']'.code.toByte())
-            result.put("children", children)
-            return result
+        } finally {
+            if (!installed) snapshot?.nodes?.values?.forEach { it.node.recycle() }
         }
-        val windowTrees = JSONArray()
-        val targetWindows = displayWindows(displayId).sortedWith(
-            compareBy<AccessibilityWindowInfo> { !it.isFocused }.thenBy { it.type != AccessibilityWindowInfo.TYPE_APPLICATION }
-        )
-        observedWindowIds = targetWindows.map { it.id }.toSet()
-        targetWindows.forEach { window ->
-            val root = window.root ?: return@forEach
-            try {
-                windowTrees.put(JSONObject().apply {
-                    put("window_id", window.id)
-                    put("title", window.title?.toString().orEmpty())
-                    put("package", root.packageName?.toString().orEmpty())
-                    put("focused", window.isFocused)
-                    put("type", window.type)
-                    val digest = MessageDigest.getInstance("SHA-256")
-                    put("root", visit(root, 0, window.id, root.packageName?.toString().orEmpty(), digest))
-                    put("content_hash", digest.digest().joinToString("") { "%02x".format(it) })
-                    put("updates_since_last_observe", updates[window.id] ?: 0)
-                })
-            } finally { root.recycle() }
-        }
-        // Some services/older OS releases expose the active root before the windows list.
-        if (windowTrees.length() == 0 && displayId == Display.DEFAULT_DISPLAY) {
-            rootInActiveWindow?.let { root ->
-                if (isOverlayRoot(root)) { root.recycle(); return@let }
-                observedWindowIds = observedWindowIds + root.windowId
+    }
+
+    @Suppress("DEPRECATION")
+    private fun buildObservation(displayId: Int, width: Int, height: Int, updates: Map<Int, Int>, excludeKeyboard: Boolean): ObservationSnapshot {
+        val snapshotNodes = mutableMapOf<String, ObservedNode>()
+        var windowIds = emptySet<Int>()
+        try {
+            val snapshotId = UUID.randomUUID().toString().take(8)
+            var count = 0
+            var truncated = false
+            fun visit(node: AccessibilityNodeInfo, depth: Int, windowId: Int, windowPackage: String, digest: MessageDigest,
+                parents: List<AncestorAnchor> = emptyList()): JSONObject? {
+                if (count >= 1200 || depth >= 48) { truncated = true; return null }
+                val id = "$snapshotId:${count++}"
+                snapshotNodes[id] = ObservedNode(AccessibilityNodeInfo.obtain(node), identity(node, windowPackage),
+                    parents.mapNotNull { anchorKey(it, node.isEditable) }.take(2), windowId, windowPackage)
+                val rect = Rect().also(node::getBoundsInScreen)
+                val actions = node.actionList.map { it.id }.toSet()
+                val result = JSONObject().apply {
+                    put("class", node.className?.toString().orEmpty())
+                    put("view_id", node.viewIdResourceName.orEmpty())
+                    put("text", if (node.isPassword) "" else node.text?.toString().orEmpty().take(2000))
+                    put("description", if (node.isPassword) "" else node.contentDescription?.toString().orEmpty().take(2000))
+                    put("bounds", JSONArray(listOf(rect.left, rect.top, rect.right, rect.bottom)))
+                    put("visible", node.isVisibleToUser)
+                    put("enabled", node.isEnabled)
+                    put("clickable", AccessibilityNodeInfo.ACTION_CLICK in actions)
+                    put("long_clickable", AccessibilityNodeInfo.ACTION_LONG_CLICK in actions)
+                    put("editable", node.isEditable)
+                    put("focused", node.isFocused)
+                    put("scrollable", node.isScrollable)
+                    put("selected", node.isSelected)
+                    put("checkable", node.isCheckable)
+                    put("checked", node.isChecked)
+                    put("password", node.isPassword)
+                    put("actionable", node.isVisibleToUser && node.isEnabled && !rect.isEmpty && actions.isNotEmpty())
+                }
+                // The digest excludes ephemeral node_id values, so repeated observations can be compared.
+                digest.update(result.toString().toByteArray(Charsets.UTF_8))
+                digest.update('['.code.toByte())
+                result.put("node_id", id)
+                val children = JSONArray()
+                val childParents = listOf(ancestorAnchor(node)) + parents.take(5)
+                for (index in 0 until node.childCount) {
+                    if (count >= 1200) { truncated = true; break }
+                    val child = node.getChild(index) ?: continue
+                    try { visit(child, depth + 1, windowId, windowPackage, digest, childParents)?.let(children::put) } finally { child.recycle() }
+                }
+                digest.update(']'.code.toByte())
+                result.put("children", children)
+                return result
+            }
+            val windowTrees = JSONArray()
+            val targetWindows = displayWindows(displayId, excludeKeyboard).sortedWith(
+                compareBy<AccessibilityWindowInfo> { !it.isFocused }.thenBy { it.type != AccessibilityWindowInfo.TYPE_APPLICATION }
+            )
+            windowIds = targetWindows.map { it.id }.toSet()
+            targetWindows.forEach { window ->
+                val root = window.root ?: return@forEach
                 try {
-                    val digest = MessageDigest.getInstance("SHA-256")
                     windowTrees.put(JSONObject().apply {
-                        put("window_id", root.windowId)
+                        put("window_id", window.id)
+                        put("title", window.title?.toString().orEmpty())
                         put("package", root.packageName?.toString().orEmpty())
-                        put("root", visit(root, 0, root.windowId, root.packageName?.toString().orEmpty(), digest))
+                        put("focused", window.isFocused)
+                        put("type", window.type)
+                        val digest = MessageDigest.getInstance("SHA-256")
+                        put("root", visit(root, 0, window.id, root.packageName?.toString().orEmpty(), digest))
                         put("content_hash", digest.digest().joinToString("") { "%02x".format(it) })
-                        put("updates_since_last_observe", updates[root.windowId] ?: 0)
+                        put("updates_since_last_observe", updates[window.id] ?: 0)
                     })
                 } finally { root.recycle() }
             }
-        }
-        actionInvalidated = false
-        return JSONObject().apply {
-            put("ok", true)
-            put("display_id", displayId)
-            put("mode", if (displayId == Display.DEFAULT_DISPLAY) "foreground" else "virtual_display")
-            put("width", width)
-            put("height", height)
-            put("coordinate_space", "normalized_0_1000")
-            put("bounds_coordinate_space", "display_pixels")
-            put("windows", windowTrees)
-            put("snapshot_id", snapshotId)
-            put("node_count", count)
-            put("truncated", truncated)
-            put("stdout", if (count == 0) "No accessible elements. Request a screenshot if this app uses Canvas or a WebView." else "Phone Use element tree. Use node_id for actions; request screenshot only if needed.")
+            // Some services/older OS releases expose the active root before the windows list.
+            if (windowTrees.length() == 0 && displayId == Display.DEFAULT_DISPLAY) {
+                rootInActiveWindow?.let { root ->
+                    if (isOverlayRoot(root)) { root.recycle(); return@let }
+                    windowIds = windowIds + root.windowId
+                    try {
+                        val digest = MessageDigest.getInstance("SHA-256")
+                        windowTrees.put(JSONObject().apply {
+                            put("window_id", root.windowId)
+                            put("package", root.packageName?.toString().orEmpty())
+                            put("root", visit(root, 0, root.windowId, root.packageName?.toString().orEmpty(), digest))
+                            put("content_hash", digest.digest().joinToString("") { "%02x".format(it) })
+                            put("updates_since_last_observe", updates[root.windowId] ?: 0)
+                        })
+                    } finally { root.recycle() }
+                }
+            }
+            val json = JSONObject().apply {
+                put("ok", true)
+                put("display_id", displayId)
+                put("mode", if (displayId == Display.DEFAULT_DISPLAY) "foreground" else "virtual_display")
+                put("width", width)
+                put("height", height)
+                put("coordinate_space", "normalized_0_1000")
+                put("bounds_coordinate_space", "display_pixels")
+                put("windows", windowTrees)
+                put("snapshot_id", snapshotId)
+                put("node_count", count)
+                put("truncated", truncated)
+                put("stdout", if (count == 0) "No accessible elements. Request a screenshot if this app uses Canvas or a WebView." else "Phone Use element tree. Use node_id for actions; request screenshot only if needed.")
+            }
+            return ObservationSnapshot(json, snapshotNodes, windowIds)
+        } catch (cause: Throwable) {
+            snapshotNodes.values.forEach { it.node.recycle() }
+            throw cause
         }
     }
 

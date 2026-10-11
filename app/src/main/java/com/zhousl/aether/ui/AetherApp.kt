@@ -953,6 +953,7 @@ private fun AetherAppContent(
                     onSetSkillSelected = viewModel::setComposerSkillSelected,
                     onSetMcpServerSelected = { _, _ -> },
                     onSetAgentModeSelected = viewModel::setComposerAgentModeSelected,
+                    onToggleAgentModeSelected = viewModel::toggleComposerAgentModeSelected,
                     onSetChromeSelected = viewModel::setComposerChromeSelected,
                     onCancelEdit = viewModel::cancelMessageEdit,
                     onSend = viewModel::sendCurrentMessage,

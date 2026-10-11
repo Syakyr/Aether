@@ -18,6 +18,7 @@ import com.zhousl.aether.data.AppUpdateManager
 import com.zhousl.aether.data.AutomaticModelPurpose
 import com.zhousl.aether.phoneuse.PhoneUseAccessibilityService
 import com.zhousl.aether.data.PhoneUsePermissionRequestPolicy
+import com.zhousl.aether.data.phoneUseSelectionAfterMenuClick
 import com.zhousl.aether.data.PhoneUseInputStrategy
 import com.zhousl.aether.data.PhoneUseOutputStrategy
 import com.zhousl.aether.data.phoneUseAuthorizationMethod
@@ -3221,6 +3222,17 @@ class AetherViewModel(
     }
 
 
+    fun toggleComposerAgentModeSelected() {
+        val current = _uiState.value
+        val selected = current.sessions.firstOrNull { it.id == current.currentSessionId }?.agentModeEnabled
+            ?: current.draftAgentModeEnabled
+        setComposerAgentModeSelected(phoneUseSelectionAfterMenuClick(
+            selected = selected,
+            enabled = current.settings.agentModeAuthorizationEnabled,
+            granted = PhoneUseAccessibilityService.isEnabled(getApplication()),
+        ))
+    }
+
     fun setComposerAgentModeSelected(selected: Boolean) {
         var didUpdate = false
         var persistedSelected = false
@@ -3228,6 +3240,8 @@ class AetherViewModel(
         val shouldRequestAccessibility = selected &&
             _uiState.value.settings.agentModeAuthorizationEnabled &&
             !PhoneUseAccessibilityService.isEnabled(getApplication())
+        // Access belongs to the explicit menu action, independent of session persistence or cancellation.
+        if (shouldRequestAccessibility) requestPhoneUsePermissionIfNeeded(force = true)
         _uiState.update { current ->
             val resolvedSelected = selected &&
                 (current.isAgentModeReady() || shouldRequestAccessibility)
@@ -3277,7 +3291,6 @@ class AetherViewModel(
                 properties = mapOf("enabled" to persistedSelected),
             )
         }
-        if (shouldRequestAccessibility) requestPhoneUsePermissionIfNeeded(force = true)
     }
 
     fun setComposerChromeSelected(selected: Boolean) {

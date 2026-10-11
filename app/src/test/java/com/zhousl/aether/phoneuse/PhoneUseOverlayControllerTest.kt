@@ -131,11 +131,27 @@ class PhoneUseOverlayControllerTest {
     @Test @Config(sdk = [35]) fun modernEdgeShaderRendersOnlyTheScreenPerimeter() {
         val view = PhoneUseEdgeView(org.robolectric.RuntimeEnvironment.getApplication())
         view.layout(0, 0, 320, 640)
+        assertEquals(View.LAYER_TYPE_NONE, view.layerType)
         view.start()
+        // Window attachment may take time. Entry must begin with the first rendered frame.
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1500))
         val node = android.graphics.RenderNode("edge-test").apply { setPosition(0, 0, 320, 640) }
         view.draw(node.beginRecording())
         node.endRecording()
+        val first = hardwareBitmap(node)
+        assertEquals(0, android.graphics.Color.alpha(first.getPixel(1, 320)))
+        first.recycle()
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1500))
+        view.draw(node.beginRecording())
+        node.endRecording()
+        val bitmap = hardwareBitmap(node)
+        assertTrue(android.graphics.Color.alpha(bitmap.getPixel(1, 320)) > 100)
+        assertEquals(0, android.graphics.Color.alpha(bitmap.getPixel(160, 320)))
+        view.stop()
+        bitmap.recycle()
+    }
+
+    private fun hardwareBitmap(node: android.graphics.RenderNode): android.graphics.Bitmap {
         val hardware = ReflectionHelpers.callStaticMethod<android.graphics.Bitmap>(
             android.graphics.HardwareRenderer::class.java, "createHardwareBitmap",
             ReflectionHelpers.ClassParameter.from(android.graphics.RenderNode::class.java, node),
@@ -144,10 +160,7 @@ class PhoneUseOverlayControllerTest {
         )
         val bitmap = hardware.copy(android.graphics.Bitmap.Config.ARGB_8888, false)
         hardware.recycle()
-        assertTrue(android.graphics.Color.alpha(bitmap.getPixel(1, 320)) > 100)
-        assertEquals(0, android.graphics.Color.alpha(bitmap.getPixel(160, 320)))
-        view.stop()
-        bitmap.recycle()
+        return bitmap
     }
 
     @Test fun chineseEmojiAndLongUnbrokenTextHaveVisibleBoundedLayout() {

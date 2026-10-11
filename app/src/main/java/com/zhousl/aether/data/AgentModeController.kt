@@ -389,9 +389,8 @@ class AgentModeController(
                         (!hasRefreshedAuthorization || authorizationSettings.agentModeAuthorizationEnabled) &&
                         (liveSettings.phoneUseInputStrategy == PhoneUseInputStrategy.ElementTreeFirst || liveSettings.phoneUseAllowStrategySwitch)) {
                         try {
-                            val fresh = withContext(Dispatchers.Main) {
-                                PhoneUseAccessibilityService.requireConnected().observe(state.displayId, state.width, state.height)
-                            }
+                            val fresh = PhoneUseAccessibilityService.requireConnected()
+                                .observeAsync(state.displayId, state.width, state.height)
                             result.put("observation", fresh)
                             result.put("recovery", "use_returned_observation")
                         } catch (cause: Throwable) {
@@ -820,9 +819,8 @@ class AgentModeController(
         val state = _displayState.value
         check(state.isActive && state.displayId == expectedDisplayId) { "Phone Use session stopped before observation." }
         val displayId = state.displayId ?: error("Phone Use session has no display.")
-        return withContext(Dispatchers.Main) {
-            PhoneUseAccessibilityService.requireConnected().observe(displayId, state.width, state.height).toString()
-        }
+        return PhoneUseAccessibilityService.requireConnected()
+            .observeAsync(displayId, state.width, state.height).toString()
     }
 
     private suspend fun captureAfterDelay(
