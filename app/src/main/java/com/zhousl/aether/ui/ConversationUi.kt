@@ -1540,7 +1540,7 @@ private fun PendingAssistantTimeline(
     onDetachAgentModePreviewSurface: (Surface) -> Unit,
 ) {
     val visiblePendingInvocations = pendingToolInvocations.filterNot {
-        it.isAgentModeDisplayInvocation() || it.isChromeDisplayInvocation()
+        (agentModeDisplayState.isVirtualDisplay && it.isAgentModeDisplayInvocation()) || it.isChromeDisplayInvocation()
     }
     val blockAgentModeInvocations = blocks.flatMap { it.agentModeToolInvocations() }
     val pendingAgentModeInvocations = pendingToolInvocations.filter { it.isAgentModeDisplayInvocation() }
@@ -1549,6 +1549,7 @@ private fun PendingAssistantTimeline(
     val agentModePreviewVisible =
         agentModeSelected &&
             agentModeDisplayState.isActive &&
+                    agentModeDisplayState.isVirtualDisplay &&
             (blockAgentModeInvocations.isNotEmpty() ||
                 pendingAgentModeInvocations.isNotEmpty() ||
                 agentModeDisplayState.latestPreviewPath.isNotBlank())
@@ -1771,6 +1772,7 @@ private fun PendingAssistantTimelineBlock(
                     isLastBlock &&
                     agentModeSelected &&
                     agentModeDisplayState.isActive &&
+                    agentModeDisplayState.isVirtualDisplay &&
                     block.toolInvocations.any { it.toolName.equals("agent_display", ignoreCase = true) }
             if (shouldShowAgentModePreview) {
                 AgentModePreviewPanel(
@@ -3180,7 +3182,7 @@ private fun AgentModePreviewPanel(
     onAttachSurface: (Surface) -> Unit,
     onDetachSurface: (Surface) -> Unit,
 ) {
-    val resolvedLabel = label ?: stringResource(R.string.agent_mode_label)
+    val resolvedLabel = label ?: stringResource(R.string.settings_virtual_display)
     val resolvedContentDescription =
         contentDescription ?: stringResource(R.string.chat_agent_mode_virtual_display)
     val resolvedPendingText =

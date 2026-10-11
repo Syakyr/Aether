@@ -4413,7 +4413,7 @@ private fun buildAgentModeReplayFrames(
             !invocation.toolName.equals("browser", ignoreCase = true)
         ) return@forEach
         val output = parseJsonObject(invocation.outputJson) ?: return@forEach
-        if (!output.optBoolean("ok")) return@forEach
+        if (!output.optBoolean("ok") || output.optString("mode") == "foreground") return@forEach
         val previewPath = output.optString("preview_path").ifBlank {
             output.optString("previewPath").ifBlank {
                 output.optString("screenshot_path")
