@@ -22,6 +22,7 @@ import com.zhousl.aether.data.phoneUseSelectionAfterMenuClick
 import com.zhousl.aether.data.PhoneUseInputStrategy
 import com.zhousl.aether.data.PhoneUseOutputStrategy
 import com.zhousl.aether.data.phoneUseAuthorizationMethod
+import com.zhousl.aether.data.AgentModeDisplayOrientation
 import com.zhousl.aether.data.AgentModeAuthorizationMethod
 import com.zhousl.aether.data.AgentWorkspaceMode
 import com.zhousl.aether.data.AlpineEnvironmentVariable
@@ -2425,8 +2426,16 @@ class AetherViewModel(
         settingsRepository.updateVirtualDisplay(true, method)
     }
 
+    fun saveAgentModeDisplayOrientation(orientation: AgentModeDisplayOrientation) {
+        if (_uiState.value.settings.agentModeDisplayOrientation == orientation) return
+        if (_uiState.value.settings.phoneUseVirtualDisplayEnabled) agentModeController.stopDisplay()
+        _uiState.update { it.copy(settings = it.settings.copy(agentModeDisplayOrientation = orientation)) }
+        viewModelScope.launch { settingsRepository.updateAgentModeDisplayOrientation(orientation) }
+    }
+
     fun disableVirtualDisplay() {
         cancelVirtualDisplayAuthorization()
+        agentModeController.stopDisplay()
         _uiState.update { it.copy(settings = it.settings.copy(phoneUseVirtualDisplayEnabled = false)) }
         viewModelScope.launch {
             settingsRepository.updateVirtualDisplay(false, _uiState.value.settings.agentModeAuthorizationMethod)
@@ -6011,6 +6020,7 @@ class AetherViewModel(
         put("phoneUseOutputStrategy", phoneUseOutputStrategy.storageValue)
         put("phoneUseAllowStrategySwitch", phoneUseAllowStrategySwitch)
         put("phoneUseVirtualDisplayEnabled", phoneUseVirtualDisplayEnabled)
+        put("agentModeDisplayOrientation", agentModeDisplayOrientation.storageValue)
         put("agentModeAuthorizationEnabled", agentModeAuthorizationEnabled)
         put("agentModeAuthorizationMethod", agentModeAuthorizationMethod.storageValue)
         put("language", language.storageValue)
@@ -6113,6 +6123,7 @@ class AetherViewModel(
             phoneUseOutputStrategy = PhoneUseOutputStrategy.fromStorage(json.optString("phoneUseOutputStrategy")),
             phoneUseAllowStrategySwitch = json.optBoolean("phoneUseAllowStrategySwitch", true),
             phoneUseVirtualDisplayEnabled = json.optBoolean("phoneUseVirtualDisplayEnabled", false),
+            agentModeDisplayOrientation = AgentModeDisplayOrientation.fromStorage(json.optString("agentModeDisplayOrientation")),
             agentModeAuthorizationEnabled = json.optBoolean(
                 "agentModeAuthorizationEnabled",
                 defaults.agentModeAuthorizationEnabled,

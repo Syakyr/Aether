@@ -143,6 +143,7 @@ import com.zhousl.aether.phoneuse.PhoneUseAccessibilityService
 import com.zhousl.aether.data.AppSettings
 import com.zhousl.aether.data.PhoneUseInputStrategy
 import com.zhousl.aether.data.PhoneUseOutputStrategy
+import com.zhousl.aether.data.AgentModeDisplayOrientation
 import com.zhousl.aether.data.AgentModeAuthorizationMethod
 import com.zhousl.aether.data.AgentModeAuthorizationState
 import com.zhousl.aether.data.AgentModeDisplayState
@@ -408,6 +409,7 @@ fun SettingsScreen(
     phoneUseSettings: AppSettings,
     virtualDisplayAuthorizationState: AgentModeAuthorizationState,
     isAuthorizingVirtualDisplay: Boolean,
+    onSaveAgentModeDisplayOrientation: (AgentModeDisplayOrientation) -> Unit,
     onSavePhoneUseOptions: (PhoneUseInputStrategy, PhoneUseOutputStrategy, Boolean) -> Unit,
     onDisableVirtualDisplay: () -> Unit,
     onAuthorizeVirtualDisplay: (AgentModeAuthorizationMethod) -> Unit,
@@ -1166,6 +1168,7 @@ fun SettingsScreen(
                     onSaveAgentModeAuthorization(it, phoneUseSettings.agentModeAuthorizationMethod)
                 },
                 onOptionsChanged = onSavePhoneUseOptions,
+                onDisplayOrientationChanged = onSaveAgentModeDisplayOrientation,
                 onVirtualDisplayChanged = { enabled ->
                     if (enabled) currentPage = SettingsPage.VirtualDisplayAuthorization.name
                     else onDisableVirtualDisplay()
@@ -5666,6 +5669,7 @@ private fun WorkspaceModeSettingsSection(
 @Composable
 private fun PhoneUseSettingsPage(
     settings: AppSettings,
+    onDisplayOrientationChanged: (AgentModeDisplayOrientation) -> Unit,
     onEnabledChanged: (Boolean) -> Unit,
     onOptionsChanged: (PhoneUseInputStrategy, PhoneUseOutputStrategy, Boolean) -> Unit,
     onVirtualDisplayChanged: (Boolean) -> Unit,
@@ -5727,6 +5731,25 @@ private fun PhoneUseSettingsPage(
                     verticalAlignment = Alignment.CenterVertically,
                     title = stringResource(R.string.phone_use_virtual_enabled), subtitle = "",
                     checked = settings.phoneUseVirtualDisplayEnabled, onCheckedChange = onVirtualDisplayChanged,
+                )
+            }
+            if (settings.phoneUseVirtualDisplayEnabled) {
+                CardDivider()
+                val orientationLabels = mapOf(
+                    AgentModeDisplayOrientation.Device to stringResource(R.string.settings_agent_mode_orientation_device),
+                    AgentModeDisplayOrientation.Portrait to stringResource(R.string.settings_agent_mode_orientation_portrait),
+                    AgentModeDisplayOrientation.Landscape to stringResource(R.string.settings_agent_mode_orientation_landscape),
+                )
+                SelectionDropdownField(
+                    label = stringResource(R.string.settings_agent_mode_orientation),
+                    supportingText = stringResource(R.string.settings_agent_mode_orientation_hint),
+                    selectedLabel = orientationLabels.getValue(settings.agentModeDisplayOrientation),
+                    options = AgentModeDisplayOrientation.entries.map { orientation ->
+                        SelectionOption(orientation.storageValue, orientationLabels.getValue(orientation), "",
+                            orientation == settings.agentModeDisplayOrientation) {
+                            onDisplayOrientationChanged(orientation)
+                        }
+                    },
                 )
             }
         }

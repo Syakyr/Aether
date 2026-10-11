@@ -42,6 +42,20 @@ enum class AgentModeAuthorizationMethod(
     }
 }
 
+/** Android Phone Use virtual-display geometry; Device preserves the existing physical size. */
+@Serializable
+enum class AgentModeDisplayOrientation(val storageValue: String) {
+    Device("device"),
+    Portrait("portrait"),
+    Landscape("landscape");
+
+    companion object {
+        fun fromStorage(value: String?): AgentModeDisplayOrientation =
+            entries.firstOrNull { it.storageValue == value } ?: Device
+    }
+}
+
+
 @Serializable
 enum class PhoneUseInputStrategy(val storageValue: String) {
     ElementTreeFirst("element_tree_first"), ScreenshotFirst("screenshot_first");
@@ -194,6 +208,7 @@ data class AppSettings(
     val phoneUseOutputStrategy: PhoneUseOutputStrategy = PhoneUseOutputStrategy.ElementFirst,
     val phoneUseAllowStrategySwitch: Boolean = true,
     val phoneUseVirtualDisplayEnabled: Boolean = false,
+    val agentModeDisplayOrientation: AgentModeDisplayOrientation = AgentModeDisplayOrientation.Device,
     val language: AppLanguage = defaultAppLanguage(),
     val themeMode: AppThemeMode = AppThemeMode.System,
     val defaultChatModelKey: String = "",

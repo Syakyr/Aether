@@ -247,6 +247,11 @@ private fun agentModeToolDefinition(): JSONObject = JSONObject().apply {
                     put("include_system", booleanProperty("For list_apps: whether to include system apps."))
                     put("max_results", integerProperty("For list_apps: maximum number of apps to return."))
                     put("target", stringProperty("For launch: package name or exact app label."))
+                    put("orientation", stringProperty(
+                        "For start/launch in Virtual Display mode only: device, portrait, or landscape. " +
+                            "Uses the saved preference when omitted. Overrides last until stop; changing orientation recreates " +
+                            "the display, so start must be followed by launch. Foreground mode rejects this parameter."
+                    ).put("enum", JSONArray().put("device").put("portrait").put("landscape")))
                     listOf("x", "y", "x1", "y1", "x2", "y2").forEach { key ->
                         val axis = if (key.startsWith("x")) "width" else "height"
                         put(

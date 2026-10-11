@@ -39,6 +39,24 @@ Double-tapping the capsule opens a keyboard and inline Steer field above the con
 
 Observations are bounded to 1,200 nodes and 48 levels. An explicit new observation or completed action invalidates old element IDs; unrelated content events do not. Foreground updates do not invalidate a background display's observation; window membership and node display IDs prevent cross-display retargeting. Actions are serialized across chats. Revoking Accessibility or disabling Phone Use releases an active Virtual Display.
 
+## Virtual Display orientation and fullscreen preview
+
+Android Virtual Display supports **Device default**, **Portrait**, and **Landscape** in Settings → Phone Use when Virtual Display is enabled. Device default preserves the physical display dimensions; portrait/landscape order the short/long edges. Changing the saved choice stops the managed display; relaunch the app afterwards. Foreground Accessibility uses the actual screen geometry and does not need this setting. iOS has no Android Virtual Display implementation; shared settings and data archives preserve the preference.
+
+`agent_display` accepts a session-only `orientation` (`device`, `portrait`, `landscape`) on `start`/`launch` in Virtual Display mode:
+
+```json
+{"action":"launch","target":"com.miniclip.plagueinc","orientation":"landscape"}
+```
+
+The override persists for subsequent observations/actions until stop, without changing the saved preference. Switching orientation recreates the display; follow `start` with `launch`. Invalid requests and failed display creation do not retain a new override. Foreground requests reject this parameter. `status` reports the selected orientation in Virtual Display mode. Configuration tools expose the saved choice as `agent_mode.display_orientation`.
+
+The display and its off-screen buffer use the same dimensions. Preview surfaces are recreated when the display ID or geometry changes, and input continues through Accessibility on that display with normalized 0–1000 gesture coordinates.
+
+Tap the preview frame to reveal **Fullscreen**. The viewer fits both portrait and landscape content without stretching or cropping; Android Back or **Exit fullscreen** returns to the card. Only one live surface is composed at a time. Leaving Aether dismisses fullscreen, and fullscreen is not restored on reopening.
+
+Hardware checks for both Root and Shizuku: launch a landscape-only app; confirm landscape observations/screenshots, fitted preview, and aligned element/gesture input. Switch orientation and relaunch; verify session override persistence, stop restoring the saved preference, screenshot capture while previewing, fullscreen enter/exit and device rotation. Restart Aether and export/import settings to verify persistence.
+
 ## Dynamic UI and element identity
 
 Do not wait for the entire screen to become idle. Status-bar clocks, loading indicators, feeds, animations and background windows may keep producing Accessibility events while the intended control remains unchanged. These events are recorded per window for diagnostics; they do not invalidate every node.

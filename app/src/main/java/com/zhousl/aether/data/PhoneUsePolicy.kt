@@ -76,3 +76,20 @@ internal fun phoneUseReturnToAetherRequested(settings: AppSettings, action: Stri
     require(!requested || !settings.phoneUseVirtualDisplayEnabled) { "return_to_aether is only available in foreground Phone Use." }
     return requested
 }
+
+/** Only managed virtual displays have configurable geometry. */
+internal fun phoneUseDisplayOrientationRequested(
+    settings: AppSettings,
+    action: String,
+    arguments: org.json.JSONObject,
+): AgentModeDisplayOrientation? {
+    if (!arguments.has("orientation")) return null
+    require(settings.phoneUseVirtualDisplayEnabled && settings.phoneUseAuthorizationMethod != AgentModeAuthorizationMethod.Accessibility) {
+        "orientation is only available in Virtual Display mode."
+    }
+    require(action == "start" || action == "launch") { "orientation is only supported for start or launch." }
+    val value = arguments.get("orientation")
+    require(value is String) { "orientation must be device, portrait, or landscape." }
+    return AgentModeDisplayOrientation.entries.firstOrNull { it.storageValue == value.trim().lowercase() }
+        ?: throw IllegalArgumentException("orientation must be device, portrait, or landscape.")
+}

@@ -188,6 +188,8 @@ class AgentModeController(
         clearShizukuService("Shizuku stopped. Phone Use virtual display was reset.")
     }
 
+    private var displayOrientationOverride: AgentModeDisplayOrientation? = null
+    private var createdDisplayOrientation: AgentModeDisplayOrientation? = null
     private var shizukuDisplayId: Int? = null
     private var displayOwnerMethod: AgentModeAuthorizationMethod? = null
     private var displayOwnerBinder: IBinder? = null
@@ -256,7 +258,10 @@ class AgentModeController(
             )
 
             val liveSettings = if (hasRefreshedAuthorization) authorizationSettings else settings
+            val previousOrientationOverride = displayOrientationOverride
             runCatching {
+                val requestedOrientation = phoneUseDisplayOrientationRequested(liveSettings, action, arguments)
+                if (action == "launch") require(arguments.optString("target").trim().isNotBlank()) { "Missing required 'target' argument." }
                 val returnToAether = phoneUseReturnToAetherRequested(liveSettings, action, arguments)
                 val requestedInput = resolvePhoneUseInputStrategy(liveSettings, action,
                     arguments.optString("input_strategy").trim())
@@ -268,6 +273,7 @@ class AgentModeController(
                     hasNode = arguments.optString("node_id").isNotBlank(),
                     hasCoordinates = arguments.has("x") && arguments.has("y"),
                     override = arguments.optString("output_strategy").trim())
+                if (requestedOrientation != null) displayOrientationOverride = requestedOrientation
                 when (action) {
                     "start", "observe", "tree" -> {
                         ensureDisplay(settings)
@@ -369,6 +375,9 @@ class AgentModeController(
                     )
                 }
             }.getOrElse { throwable ->
+                if (arguments.has("orientation") && createdDisplayOrientation != displayOrientationOverride) {
+                    displayOrientationOverride = previousOrientationOverride.takeIf { shizukuDisplayId != null }
+                }
                 if (throwable is CancellationException) throw throwable
                 captureAgentModeFailed(
                     settings = settings,
@@ -532,15 +541,19 @@ class AgentModeController(
             return Display.DEFAULT_DISPLAY
         }
         check(Build.VERSION.SDK_INT >= 30) { "Virtual Display accessibility requires Android 11 or later." }
+        val orientation = displayOrientationOverride ?:
+            (if (hasRefreshedAuthorization) authorizationSettings else settings).agentModeDisplayOrientation
         val service = requireAgentModeService(settings)
         val serviceBinder = service.asBinder()
         shizukuDisplayId?.let { displayId ->
-            if (isCurrentDisplayOwner(settings, serviceBinder)) {
+            if (isCurrentDisplayOwner(settings, serviceBinder) && createdDisplayOrientation == orientation) {
                 return displayId
             }
-            releaseDisplay("Virtual display reset because Phone Use authorization service changed.")
+            releaseDisplay("Virtual display reset because Phone Use service or orientation changed. Relaunch the target app.", preserveOrientationOverride = true)
         }
-        val displaySpec = currentDeviceDisplaySpec()
+        val deviceSpec = currentDeviceDisplaySpec()
+        val (width, height) = agentModeDisplayDimensions(deviceSpec.width, deviceSpec.height, orientation)
+        val displaySpec = deviceSpec.copy(width = width, height = height)
         val displayId = service.createOwnedDisplay(
             AgentDisplayName,
             displaySpec.width,
@@ -548,6 +561,7 @@ class AgentModeController(
             displaySpec.densityDpi,
         )
         shizukuDisplayId = displayId
+        createdDisplayOrientation = orientation
         displayOwnerMethod = settings.phoneUseAuthorizationMethod
         displayOwnerBinder = serviceBinder
         diagnosticLogger.event(
@@ -934,6 +948,9 @@ class AgentModeController(
         return JSONObject().apply {
             put("ok", true)
             put("active", state.isActive)
+            if (settings.phoneUseVirtualDisplayEnabled) {
+                put("orientation", (createdDisplayOrientation ?: settings.agentModeDisplayOrientation).storageValue)
+            }
             put("mode", if (settings.phoneUseAuthorizationMethod == AgentModeAuthorizationMethod.Accessibility) "foreground" else "virtual_display")
             put("display_id", state.displayId)
             put("width", state.width)
@@ -960,7 +977,9 @@ class AgentModeController(
         }.toString()
     }
 
-    private fun releaseDisplay(status: String = "Virtual display stopped") {
+    private fun releaseDisplay(status: String = "Virtual display stopped", preserveOrientationOverride: Boolean = false) {
+        if (!preserveOrientationOverride) displayOrientationOverride = null
+        createdDisplayOrientation = null
         shizukuDisplayId?.let { displayId ->
             diagnosticLogger.event(
                 category = "agent_mode",

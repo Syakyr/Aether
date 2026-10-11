@@ -1077,4 +1077,11 @@
     <string name="phone_use_authorizing">正在授权…</string>
     <string name="phone_use_permission_title">授予 Phone Use 无障碍权限</string>
     <string name="phone_use_permission_body">请在系统无障碍设置中启用 Aether，允许 Agent 操作手机。</string>
+    <string name="settings_agent_mode_orientation">显示方向</string>
+    <string name="settings_agent_mode_orientation_device">设备默认</string>
+    <string name="settings_agent_mode_orientation_portrait">竖屏</string>
+    <string name="settings_agent_mode_orientation_landscape">横屏</string>
+    <string name="settings_agent_mode_orientation_hint">切换方向将停止当前虚拟屏幕，请随后重新启动应用。</string>
+    <string name="agent_mode_fullscreen">全屏观看</string>
+    <string name="agent_mode_exit_fullscreen">退出全屏</string>
 </resources>

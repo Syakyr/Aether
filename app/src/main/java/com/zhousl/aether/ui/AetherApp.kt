@@ -1046,6 +1046,7 @@ private fun AetherAppContent(
                     virtualDisplayAuthorizationState = uiState.virtualDisplayAuthorizationState,
                     isAuthorizingVirtualDisplay = uiState.isAuthorizingVirtualDisplay,
                     onSavePhoneUseOptions = viewModel::savePhoneUseOptions,
+                    onSaveAgentModeDisplayOrientation = viewModel::saveAgentModeDisplayOrientation,
                     onDisableVirtualDisplay = viewModel::disableVirtualDisplay,
                     onAuthorizeVirtualDisplay = viewModel::authorizeVirtualDisplay,
                     onCancelVirtualDisplayAuthorization = viewModel::cancelVirtualDisplayAuthorization,

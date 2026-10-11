@@ -21,6 +21,8 @@ class AppSettingsSerializationTest {
         val defaults = parseAppSettings("{}")
         assertEquals(true, defaults.agentModeAuthorizationEnabled)
         assertEquals(false, defaults.phoneUseVirtualDisplayEnabled)
+        assertEquals(AgentModeDisplayOrientation.Device, defaults.agentModeDisplayOrientation)
+        assertEquals(AgentModeDisplayOrientation.Device, AgentModeDisplayOrientation.fromStorage("unknown"))
         assertEquals(true, defaults.phoneUseAllowStrategySwitch)
         assertEquals(PhoneUseInputStrategy.ElementTreeFirst, defaults.phoneUseInputStrategy)
         assertEquals(PhoneUseOutputStrategy.ElementFirst, defaults.phoneUseOutputStrategy)
@@ -31,6 +33,7 @@ class AppSettingsSerializationTest {
             phoneUseOutputStrategy = PhoneUseOutputStrategy.GestureFirst,
             phoneUseAllowStrategySwitch = false,
             phoneUseVirtualDisplayEnabled = true,
+            agentModeDisplayOrientation = AgentModeDisplayOrientation.Landscape,
         )
         assertEquals(settings, parseAppSettings(serializeAppSettings(settings)))
         assertEquals(AgentModeAuthorizationMethod.Shizuku, settings.phoneUseAuthorizationMethod)

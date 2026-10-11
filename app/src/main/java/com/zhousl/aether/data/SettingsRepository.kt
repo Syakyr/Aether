@@ -92,6 +92,10 @@ class SettingsRepository(
         }
     }
 
+    suspend fun updateAgentModeDisplayOrientation(orientation: AgentModeDisplayOrientation) {
+        context.dataStore.edit { it[AGENT_MODE_DISPLAY_ORIENTATION] = orientation.storageValue }
+    }
+
     suspend fun updateVirtualDisplay(enabled: Boolean, method: AgentModeAuthorizationMethod) {
         context.dataStore.edit {
             it[PHONE_USE_VIRTUAL_DISPLAY_ENABLED] = enabled
@@ -183,6 +187,7 @@ class SettingsRepository(
             phoneUseOutputStrategy = PhoneUseOutputStrategy.fromStorage(preferences[PHONE_USE_OUTPUT_STRATEGY]),
             phoneUseAllowStrategySwitch = preferences[PHONE_USE_ALLOW_STRATEGY_SWITCH] ?: true,
             phoneUseVirtualDisplayEnabled = preferences[PHONE_USE_VIRTUAL_DISPLAY_ENABLED] ?: false,
+            agentModeDisplayOrientation = AgentModeDisplayOrientation.fromStorage(preferences[AGENT_MODE_DISPLAY_ORIENTATION]),
             agentModeAuthorizationEnabled = preferences[AGENT_MODE_AUTHORIZATION_ENABLED] ?: true,
             agentModeAuthorizationMethod = AgentModeAuthorizationMethod.fromStorage(
                 preferences[AGENT_MODE_AUTHORIZATION_METHOD],
@@ -490,6 +495,7 @@ class SettingsRepository(
             it[PHONE_USE_OUTPUT_STRATEGY] = settings.phoneUseOutputStrategy.storageValue
             it[PHONE_USE_ALLOW_STRATEGY_SWITCH] = settings.phoneUseAllowStrategySwitch
             it[PHONE_USE_VIRTUAL_DISPLAY_ENABLED] = settings.phoneUseVirtualDisplayEnabled
+            it[AGENT_MODE_DISPLAY_ORIENTATION] = settings.agentModeDisplayOrientation.storageValue
             it[AGENT_MODE_AUTHORIZATION_ENABLED] = settings.agentModeAuthorizationEnabled
             it[AGENT_MODE_AUTHORIZATION_METHOD] = settings.agentModeAuthorizationMethod.storageValue
             it[LANGUAGE] = settings.language.storageValue
@@ -703,6 +709,7 @@ class SettingsRepository(
         val PHONE_USE_INPUT_STRATEGY = stringPreferencesKey("phone_use_input_strategy")
         val PHONE_USE_OUTPUT_STRATEGY = stringPreferencesKey("phone_use_output_strategy")
         val PHONE_USE_ALLOW_STRATEGY_SWITCH = booleanPreferencesKey("phone_use_allow_strategy_switch")
+        val AGENT_MODE_DISPLAY_ORIENTATION = stringPreferencesKey("agent_mode_display_orientation")
         val PHONE_USE_VIRTUAL_DISPLAY_ENABLED = booleanPreferencesKey("phone_use_virtual_display_enabled")
         val AGENT_MODE_AUTHORIZATION_ENABLED =
             booleanPreferencesKey("agent_mode_authorization_enabled")

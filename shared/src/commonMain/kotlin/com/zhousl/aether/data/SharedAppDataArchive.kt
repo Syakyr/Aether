@@ -351,6 +351,7 @@ private fun AppSettings.toAndroidAppSettingsJson(): JsonObject = buildJsonObject
     put("phoneUseOutputStrategy", phoneUseOutputStrategy.storageValue)
     put("phoneUseAllowStrategySwitch", phoneUseAllowStrategySwitch)
     put("phoneUseVirtualDisplayEnabled", phoneUseVirtualDisplayEnabled)
+    put("agentModeDisplayOrientation", agentModeDisplayOrientation.storageValue)
     put("agentModeAuthorizationEnabled", agentModeAuthorizationEnabled)
     put("agentModeAuthorizationMethod", agentModeAuthorizationMethod.storageValue)
     put("language", language.storageValue)
@@ -450,6 +451,7 @@ private fun parseAndroidAppSettings(value: JsonObject): AppSettings {
         phoneUseOutputStrategy = PhoneUseOutputStrategy.fromStorage(value.stringValue("phoneUseOutputStrategy")),
         phoneUseAllowStrategySwitch = value.booleanValueOrDefault("phoneUseAllowStrategySwitch", true),
         phoneUseVirtualDisplayEnabled = value.booleanValueOrDefault("phoneUseVirtualDisplayEnabled", false),
+        agentModeDisplayOrientation = AgentModeDisplayOrientation.fromStorage(value.stringValue("agentModeDisplayOrientation")),
         agentModeAuthorizationEnabled = value.booleanValueOrDefault(
             "agentModeAuthorizationEnabled",
             defaults.agentModeAuthorizationEnabled,

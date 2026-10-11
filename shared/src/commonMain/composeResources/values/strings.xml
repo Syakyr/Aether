@@ -1079,4 +1079,11 @@
     <string name="phone_use_authorizing">Authorizing…</string>
     <string name="phone_use_permission_title">Enable Phone Use accessibility</string>
     <string name="phone_use_permission_body">Enable Aether in Android Accessibility settings to let the Agent operate your phone.</string>
+    <string name="settings_agent_mode_orientation">Display orientation</string>
+    <string name="settings_agent_mode_orientation_device">Device default</string>
+    <string name="settings_agent_mode_orientation_portrait">Portrait</string>
+    <string name="settings_agent_mode_orientation_landscape">Landscape</string>
+    <string name="settings_agent_mode_orientation_hint">Changing orientation stops the current virtual display. Relaunch the app afterwards.</string>
+    <string name="agent_mode_fullscreen">Fullscreen</string>
+    <string name="agent_mode_exit_fullscreen">Exit fullscreen</string>
 </resources>

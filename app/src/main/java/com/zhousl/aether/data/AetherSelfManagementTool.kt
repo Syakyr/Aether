@@ -382,6 +382,10 @@ class AetherSelfManagementTool(
             )
 
             "agent_mode" -> current.copy(
+                agentModeDisplayOrientation = if (patch.has("display_orientation")) {
+                    AgentModeDisplayOrientation.entries.firstOrNull { it.storageValue == patch.optString("display_orientation") }
+                        ?: return failure("display_orientation must be device, portrait, or landscape.")
+                } else current.agentModeDisplayOrientation,
                 agentModeAuthorizationEnabled = if (
                     patch.hasAny("agent_mode_authorization_enabled", "authorization_enabled", "enabled")
                 ) {
@@ -414,6 +418,10 @@ class AetherSelfManagementTool(
         if (category == "agent_mode") {
             if (current.phoneUseVirtualDisplayEnabled && updated.agentModeAuthorizationMethod != current.agentModeAuthorizationMethod) {
                 return failure("Change the Virtual Display authorization method in Settings > Phone Use.")
+            }
+            if (updated.agentModeDisplayOrientation != current.agentModeDisplayOrientation) {
+                if (current.phoneUseVirtualDisplayEnabled) agentModeController.stopDisplay()
+                settingsRepository.updateAgentModeDisplayOrientation(updated.agentModeDisplayOrientation)
             }
             settingsRepository.updateAgentModeAuthorization(
                 updated.agentModeAuthorizationEnabled,
@@ -791,6 +799,7 @@ class AetherSelfManagementTool(
             .put("output_strategy", settings.phoneUseOutputStrategy.storageValue)
             .put("allow_strategy_switch", settings.phoneUseAllowStrategySwitch)
             .put("virtual_display_enabled", settings.phoneUseVirtualDisplayEnabled)
+            .put("display_orientation", settings.agentModeDisplayOrientation.storageValue)
             .put("authorization_enabled", settings.agentModeAuthorizationEnabled)
             .put("authorization_method", settings.agentModeAuthorizationMethod.storageValue)
             .put("authorization", agentModeAuthorizationStateJson(agentModeController.authorizationState.value))

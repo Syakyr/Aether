@@ -4,6 +4,27 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class PhoneUsePolicyTest {
+    @Test fun orientationOverridesRequireVirtualDisplayStartOrLaunch() {
+        val foreground = AppSettings()
+        val virtual = foreground.copy(phoneUseVirtualDisplayEnabled = true,
+            agentModeAuthorizationMethod = AgentModeAuthorizationMethod.Shizuku)
+        assertNull(phoneUseDisplayOrientationRequested(foreground, "start", org.json.JSONObject()))
+        val request = org.json.JSONObject().put("orientation", "landscape")
+        assertEquals(AgentModeDisplayOrientation.Landscape, phoneUseDisplayOrientationRequested(virtual, "launch", request))
+        assertEquals(AgentModeDisplayOrientation.Device,
+            phoneUseDisplayOrientationRequested(virtual, "start", org.json.JSONObject().put("orientation", "device")))
+        assertThrows(IllegalArgumentException::class.java) { phoneUseDisplayOrientationRequested(foreground, "launch", request) }
+        for (action in listOf("observe", "screenshot", "tap", "stop", "status")) {
+            assertThrows(IllegalArgumentException::class.java) { phoneUseDisplayOrientationRequested(virtual, action, request) }
+        }
+        for (value in listOf("auto", "", 1, org.json.JSONObject.NULL)) {
+            assertThrows(IllegalArgumentException::class.java) {
+                phoneUseDisplayOrientationRequested(virtual, "start", org.json.JSONObject().put("orientation", value))
+            }
+        }
+        assertEquals(AgentModeDisplayOrientation.Device, virtual.agentModeDisplayOrientation)
+    }
+
     @Test fun menuClickRetriesRevokedAccessInAnAlreadySelectedConversation() {
         val policy = PhoneUsePermissionRequestPolicy()
         assertTrue(policy.shouldRequest(true, false, manuallyEnabled = true))
