@@ -9,6 +9,7 @@ import com.zhousl.aether.data.AlpineEnvironmentVariable
 import com.zhousl.aether.data.LocalRuntimeId
 import com.zhousl.aether.data.normalizeAlpineEnvironmentVariables
 import java.io.File
+import java.io.IOException
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
@@ -98,6 +99,7 @@ class AlpineRuntime(
     private val loaderFile = File(loaderDir, "loader")
     private val prootFile = File(hostBinDir, "proot")
     private val libTallocFile = File(hostLibDir, "libtalloc.so.2")
+    private val guestResolvConfLock = Any()
     private val runs = ConcurrentHashMap<String, AlpineRun>()
     private val nextRunId = AtomicInteger(1)
     private val packageInstallMutex = Mutex()
@@ -1150,14 +1152,26 @@ class AlpineRuntime(
 
     private fun writeGuestResolvConf() {
         val resolvConf = File(rootfsDir, "etc/resolv.conf")
-        val existing = if (resolvConf.isFile) resolvConf.readText() else null
+        // An unreadable resolver is left exactly as it is; a chat turn must not fail over it.
+        val existing = if (resolvConf.isFile) runCatching { resolvConf.readText() }.getOrElse { return } else null
         if (!shouldRewriteGuestResolvConf(existing)) return
         val content = guestResolvConfContent(deviceDnsLinks())
         if (existing == content) return
-        resolvConf.parentFile?.mkdirs()
-        resolvConf.writeText(content)
-        resolvConf.setReadable(true, false)
-        resolvConf.setWritable(true, true)
+        synchronized(guestResolvConfLock) {
+            // Another caller may have written while this one was computing its own content.
+            val current = if (resolvConf.isFile) runCatching { resolvConf.readText() }.getOrElse { return } else null
+            if (current != null && current != existing) return
+            // Replace atomically: a reader must never see half a file, and a half file whose digest
+            // no longer matches would be treated as a hand edit and never refreshed again.
+            val staging = File(resolvConf.parentFile, "${resolvConf.name}.aether-tmp")
+            runCatching {
+                staging.parentFile?.mkdirs()
+                staging.writeText(content)
+                staging.setReadable(true, false)
+                staging.setWritable(true, true)
+                if (!staging.renameTo(resolvConf)) throw IOException("Unable to replace ${resolvConf.path}")
+            }.onFailure { staging.delete() }
+        }
     }
 
     /**
