@@ -1161,11 +1161,15 @@ class AlpineRuntime(
             // Another caller may have written while this one was computing its own content.
             val current = if (resolvConf.isFile) runCatching { resolvConf.readText() }.getOrElse { return } else null
             if (current != null && current != existing) return
-            // Replace atomically: a reader must never see half a file, and a half file whose digest
-            // no longer matches would be treated as a hand edit and never refreshed again.
-            val staging = File(resolvConf.parentFile, "${resolvConf.name}.aether-tmp")
+            // Stage outside the rootfs under an unpredictable name, then rename it into place: the
+            // guest can plant /etc/resolv.conf.aether-tmp as a symlink and a host-side write through
+            // it would land wherever that symlink points, and a reader must never see half a file,
+            // because a half file whose digest no longer matches is treated as a hand edit forever.
+            val staging = runCatching {
+                hostTmpDir.mkdirs()
+                File.createTempFile("resolv-conf", ".aether", hostTmpDir)
+            }.getOrElse { return }
             runCatching {
-                staging.parentFile?.mkdirs()
                 staging.writeText(content)
                 staging.setReadable(true, false)
                 staging.setWritable(true, true)
