@@ -16,7 +16,9 @@ class AlpineGuestResolvConfTest {
             options timeout:2 attempts:2
 
             """.trimIndent(),
-            guestResolvConfContent(listOf("100.100.100.100", "192.168.1.1")),
+            guestResolvConfContent(
+                listOf(GuestDnsLink(nameservers = listOf("100.100.100.100", "192.168.1.1"))),
+            ),
         )
     }
 
@@ -24,15 +26,43 @@ class AlpineGuestResolvConfTest {
     fun publicResolversAreOnlyTheLastResort() {
         assertEquals(
             listOf("nameserver 1.1.1.1", "nameserver 8.8.8.8"),
-            guestResolvConfContent(emptyList())
-                .lines()
-                .filter { line -> line.startsWith("nameserver") },
+            nameserversOf(guestResolvConfContent(emptyList())),
         )
         assertEquals(
             listOf("nameserver 1.1.1.1", "nameserver 8.8.8.8"),
-            guestResolvConfContent(listOf("", "   "))
-                .lines()
-                .filter { line -> line.startsWith("nameserver") },
+            nameserversOf(guestResolvConfContent(listOf(GuestDnsLink(nameservers = listOf("", "   "))))),
+        )
+    }
+
+    @Test
+    fun onlyTheActiveNetworkResolversAreUsed() {
+        // musl keeps the first answer it gets, so an underlying-network NXDOMAIN for a VPN-only
+        // name must not be able to race the VPN resolver that knows the answer.
+        assertEquals(
+            listOf("nameserver 100.100.100.100"),
+            nameserversOf(
+                guestResolvConfContent(
+                    listOf(
+                        GuestDnsLink(nameservers = listOf("100.100.100.100")),
+                        GuestDnsLink(nameservers = listOf("192.168.1.1")),
+                    ),
+                ),
+            ),
+        )
+    }
+
+    @Test
+    fun networksWithoutUsableResolversAreSkipped() {
+        assertEquals(
+            listOf("nameserver 192.168.1.1"),
+            nameserversOf(
+                guestResolvConfContent(
+                    listOf(
+                        GuestDnsLink(nameservers = listOf("fe80::54:ff:fe00:0%wlan0", "")),
+                        GuestDnsLink(nameservers = listOf("192.168.1.1")),
+                    ),
+                ),
+            ),
         )
     }
 
@@ -40,16 +70,20 @@ class AlpineGuestResolvConfTest {
     fun unusableNameserversAreDroppedAndTheRestDeduplicated() {
         assertEquals(
             listOf("nameserver 100.100.100.100", "nameserver 8.8.8.8"),
-            guestResolvConfContent(
-                listOf(
-                    "100.100.100.100",
-                    "fe80::54:ff:fe00:0%wlan0",
-                    "100.100.100.100",
-                    "8.8.8.8",
+            nameserversOf(
+                guestResolvConfContent(
+                    listOf(
+                        GuestDnsLink(
+                            nameservers = listOf(
+                                "100.100.100.100",
+                                "fe80::54:ff:fe00:0%wlan0",
+                                "100.100.100.100",
+                                "8.8.8.8",
+                            ),
+                        ),
+                    ),
                 ),
-            )
-                .lines()
-                .filter { line -> line.startsWith("nameserver") },
+            ),
         )
     }
 
@@ -57,17 +91,59 @@ class AlpineGuestResolvConfTest {
     fun atMostThreeNameserversAreWritten() {
         assertEquals(
             listOf("nameserver 10.0.0.1", "nameserver 10.0.0.2", "nameserver 10.0.0.3"),
-            guestResolvConfContent((1..6).map { index -> "10.0.0.$index" })
-                .lines()
-                .filter { line -> line.startsWith("nameserver") },
+            nameserversOf(
+                guestResolvConfContent(
+                    listOf(GuestDnsLink(nameservers = (1..6).map { index -> "10.0.0.$index" })),
+                ),
+            ),
         )
     }
 
     @Test
-    fun missingOrGeneratedResolversAreRewrittenAndHandEditsSurvive() {
+    fun searchDomainsFollowTheActiveNetwork() {
+        assertEquals(
+            listOf("search lab.example netbird.example"),
+            guestResolvConfContent(
+                listOf(
+                    GuestDnsLink(
+                        nameservers = listOf("100.100.100.100"),
+                        searchDomains = listOf("lab.example, netbird.example", "lab.example"),
+                    ),
+                    GuestDnsLink(searchDomains = listOf("home.lan")),
+                ),
+            )
+                .lines()
+                .filter { line -> line.startsWith("search") },
+        )
+        assertEquals(
+            emptyList<String>(),
+            guestResolvConfContent(
+                listOf(
+                    GuestDnsLink(
+                        nameservers = listOf("100.100.100.100"),
+                        searchDomains = listOf("not a single domain"),
+                    ),
+                ),
+            )
+                .lines()
+                .filter { line -> line.startsWith("search") },
+        )
+    }
+
+    @Test
+    fun missingGeneratedAndLegacyResolversAreRewrittenAndHandEditsSurvive() {
         assertTrue(shouldRewriteGuestResolvConf(null))
         assertTrue(shouldRewriteGuestResolvConf(""))
-        assertTrue(shouldRewriteGuestResolvConf(guestResolvConfContent(listOf("1.1.1.1"))))
+        assertTrue(
+            shouldRewriteGuestResolvConf(guestResolvConfContent(listOf(GuestDnsLink(nameservers = listOf("1.1.1.1"))))),
+        )
+        // Written by the release that pinned the public resolvers, so it is not a hand edit.
+        assertTrue(
+            shouldRewriteGuestResolvConf("nameserver 1.1.1.1\nnameserver 8.8.8.8\noptions timeout:2 attempts:2\n"),
+        )
         assertFalse(shouldRewriteGuestResolvConf("nameserver 100.100.100.100\n"))
     }
+
+    private fun nameserversOf(content: String): List<String> =
+        content.lines().filter { line -> line.startsWith("nameserver") }
 }
