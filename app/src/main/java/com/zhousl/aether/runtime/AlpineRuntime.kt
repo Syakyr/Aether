@@ -1498,9 +1498,9 @@ internal fun guestResolvConfContent(links: List<GuestDnsLink>): String {
         .distinct()
         .take(GuestResolvConfMaxNameservers)
         .ifEmpty { GuestResolvConfFallbackNameservers }
-    // Search domains are emitted space separated, so a domain holding whitespace is unusable.
+    // LinkProperties documents comma separation, but Android VPNs join search domains with spaces.
     val searchDomains = link.searchDomains
-        .flatMap { domain -> domain.split(',') }
+        .flatMap { domain -> domain.split(Regex("[,\\s]+")) }
         .map { domain -> domain.trim() }
         .filter { domain -> domain.isNotEmpty() && !domain.any { character -> character.isWhitespace() } }
         .distinct()

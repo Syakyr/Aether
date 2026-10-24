@@ -116,12 +116,15 @@ class AlpineGuestResolvConfTest {
                 .filter { line -> line.startsWith("search") },
         )
         assertEquals(
-            emptyList<String>(),
+            listOf("search lab.example vpn.example one.example two.example three.example four.example"),
             guestResolvConfContent(
                 listOf(
                     GuestDnsLink(
                         nameservers = listOf("100.100.100.100"),
-                        searchDomains = listOf("not a single domain"),
+                        searchDomains = listOf(
+                            "lab.example vpn.example\tone.example, two.example",
+                            "lab.example three.example four.example five.example",
+                        ),
                     ),
                 ),
             )
